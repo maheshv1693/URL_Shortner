@@ -43,6 +43,7 @@ Settings come from environment variables (prefix `URLSHORT_`), loaded through py
 | `sqlite_busy_timeout_ms` | `5000` | SQLite lock wait |
 | `api_key_pepper` | placeholder | Secret for keyed API key hashing; must be changed in real use |
 | `api_v1_prefix` | `/api/v1` | API prefix |
+| `redirect_cache_size` | `1024` | Max entries in the in-process redirect LRU cache |
 
 ## 4. Data model
 

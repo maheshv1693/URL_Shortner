@@ -36,3 +36,9 @@ def client(app):
 def db(app):
     with Session(app.state.engine) as session:
         yield session
+
+
+@pytest.fixture
+def auth_headers(client) -> dict[str, str]:
+    api_key = client.post("/api/v1/users").json()["api_key"]
+    return {"X-API-Key": api_key}
