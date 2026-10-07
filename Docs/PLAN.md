@@ -1,6 +1,6 @@
 # URL Shortener Prototype - Plan
 
-**Status:** Plan updated with three engineering decisions. No code exists yet; implementation is waiting for manual review and approval.
+**Status:** **Status:** Phase 1 (Tasks 1–3) implemented, verified (14/14 tests passing, ruff clean), and committed. Phase 2 (Tasks 4–6) in progress.
 
 **Stack:** FastAPI, SQLite (SQLAlchemy 2 + Alembic), pytest, httpx, Docker. Redis is not used in the prototype.
 
@@ -62,32 +62,32 @@ Because `/{code}` is a catch-all, the redirect route is registered after the `/a
 
 ## Tasks
 
-| # | Task | Subtasks | Covers |
-|---|------|----------|--------|
-| 1 | Project setup | `pyproject.toml`, `app/` layout (api, core, models, services), settings via env vars, ruff and pytest, Dockerfile | Foundation |
-| 2 | Data model | `users` (id, api_key_hash, created_at); `urls` (id, code UNIQUE, long_url, owner_id, created_at, expires_at, is_active); `clicks` (url_id, accessed_at, ip_hash, user_agent, referrer); indexes; Alembic migration; SQLite engine config (WAL, busy_timeout 5000 ms) | FR1-6, NFR4 |
-| 3 | Auth | `POST /api/v1/users` issues an API key (shown once, stored hashed); `X-API-Key` dependency | FR5, NFR6 |
-| 4 | Token generator | 7-char Base62 via `secrets.choice`; insert with 3-attempt retry on unique collision; 503 after exhaustion; reserved words rejected for aliases | FR1, NFR5 |
-| 5 | Create endpoint | `POST /api/v1/urls` (long_url, optional alias, optional ttl_seconds or expires_at); alias rules: 3-32 chars, `[A-Za-z0-9_-]`, 409 if taken | FR1, 3, 4 |
-| 6 | Redirect endpoint | `GET /{code}` returns 302; 404 unknown; 410 expired or disabled; `expires_at` checked at request time; indexed single lookup; small in-process LRU cache with invalidation on change | FR2, NFR1, 4 |
-| 7 | Management endpoints | List my URLs; `PATCH /api/v1/urls/{code}` to enable/disable; `DELETE /api/v1/urls/{code}`; owner-only (404 for others' links) | FR5 |
-| 8 | Analytics | Click ingestion via FastAPI `BackgroundTasks` (no in-memory batching); WAL and `busy_timeout=5000` config; `GET /api/v1/urls/{code}/stats` | FR6, NFR1 |
-| 9 | Security | Allow only http/https; max URL length; block localhost, private and link-local IPs (SSRF) after DNS resolution; domain blocklist file; block self-referencing links; in-memory rate limit per IP and per key (token bucket) on create and redirect; security headers; CORS config | NFR6 |
-| 10 | Reliability and availability | Transactional creates, DB constraints, `/api/v1/health` endpoint, graceful shutdown, structured logging | NFR3, 4 |
-| 11 | Tests | Unit tests (generator, retry, validators); API tests (create, alias conflict, expiry, disable, delete, ownership, rate limit); concurrency test for uniqueness; Locust or k6 redirect load test | All |
-| 12 | Docs | README with run instructions, OpenAPI examples, "scaling path" section | NFR2 |
+| # | Task | Status | Subtasks | Covers |
+|---|------|--------|----------|--------|
+| 1 | Project setup | Done | `pyproject.toml`, `app/` layout (api, core, models, services), settings via env vars, ruff and pytest, Dockerfile | Foundation |
+| 2 | Data model | Done | `users` (id, api_key_hash, created_at); `urls` (id, code UNIQUE, long_url, owner_id, created_at, expires_at, is_active); `clicks` (url_id, accessed_at, ip_hash, user_agent, referrer); indexes; Alembic migration; SQLite engine config (WAL, busy_timeout 5000 ms) | FR1-6, NFR4 |
+| 3 | Auth | Done | `POST /api/v1/users` issues an API key (shown once, stored hashed); `X-API-Key` dependency | FR5, NFR6 |
+| 4 | Token generator | In progress | 7-char Base62 via `secrets.choice`; insert with 3-attempt retry on unique collision; 503 after exhaustion; reserved words rejected for aliases | FR1, NFR5 |
+| 5 | Create endpoint | In progress | `POST /api/v1/urls` (long_url, optional alias, optional ttl_seconds or expires_at); alias rules: 3-32 chars, `[A-Za-z0-9_-]`, 409 if taken | FR1, 3, 4 |
+| 6 | Redirect endpoint | In progress | `GET /{code}` returns 302; 404 unknown; 410 expired or disabled; `expires_at` checked at request time; indexed single lookup; small in-process LRU cache with invalidation on change | FR2, NFR1, 4 |
+| 7 | Management endpoints | Pending | List my URLs; `PATCH /api/v1/urls/{code}` to enable/disable; `DELETE /api/v1/urls/{code}`; owner-only (404 for others' links) | FR5 |
+| 8 | Analytics | Pending | Click ingestion via FastAPI `BackgroundTasks` (no in-memory batching); WAL and `busy_timeout=5000` config; `GET /api/v1/urls/{code}/stats` | FR6, NFR1 |
+| 9 | Security | Pending | Allow only http/https; max URL length; block localhost, private and link-local IPs (SSRF) after DNS resolution; domain blocklist file; block self-referencing links; in-memory rate limit per IP and per key (token bucket) on create and redirect; security headers; CORS config | NFR6 |
+| 10 | Reliability and availability | Pending | Transactional creates, DB constraints, `/api/v1/health` endpoint, graceful shutdown, structured logging | NFR3, 4 |
+| 11 | Tests | Pending | Unit tests (generator, retry, validators); API tests (create, alias conflict, expiry, disable, delete, ownership, rate limit); concurrency test for uniqueness; Locust or k6 redirect load test | All |
+| 12 | Docs | Pending | README with run instructions, OpenAPI examples, "scaling path" section | NFR2 |
 
 ## Updated task sequence
 
 Phased so each phase ends with something runnable:
 
-| Phase | Tasks | Outcome |
-|-------|-------|---------|
-| 1 | 1 -> 2 -> 3 | Foundation, data models and migrations, API key auth |
-| 2 | 4 -> 5 -> 6 | Create short URLs and redirect (working core loop) |
-| 3 | 7 -> 9 | Manage URLs (disable/delete) and security hardening |
-| 4 | 8 -> 10 | Analytics and reliability |
-| 5 | 11 -> 12 | Full test suite, load test, docs |
+| Phase | Tasks | Status | Outcome |
+|-------|-------|--------|---------|
+| 1 | 1 -> 2 -> 3 | Complete | Foundation, data models and migrations, API key auth |
+| 2 | 4 -> 5 -> 6 | In progress | Create short URLs and redirect (working core loop) |
+| 3 | 7 -> 9 | Pending | Manage URLs (disable/delete) and security hardening |
+| 4 | 8 -> 10 | Pending | Analytics and reliability |
+| 5 | 11 -> 12 | Pending | Full test suite, load test, docs |
 
 Flat order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 9 -> 8 -> 10 -> 11 -> 12
 
