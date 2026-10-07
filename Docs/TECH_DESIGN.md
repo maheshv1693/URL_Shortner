@@ -44,6 +44,14 @@ Settings come from environment variables (prefix `URLSHORT_`), loaded through py
 | `api_key_pepper` | placeholder | Secret for keyed API key hashing; must be changed in real use |
 | `api_v1_prefix` | `/api/v1` | API prefix |
 | `redirect_cache_size` | `1024` | Max entries in the in-process redirect LRU cache |
+| `public_base_url` | unset | Public URL of the service; used for `short_url` and self-link detection. Set it in production (the `Host` header is client-controlled) |
+| `blocked_domains_file` | `app/core/blocked_domains.txt` | Domain blocklist, one per line, `#` comments; also blocks subdomains |
+| `rate_limit_enabled` | `true` | Master switch for token-bucket limits (turn off for load tests) |
+| `rate_limit_register_ip_per_minute` | `10` | `POST /users`, per IP |
+| `rate_limit_create_ip_per_minute` | `30` | `POST /urls`, per IP |
+| `rate_limit_create_key_per_minute` | `60` | `POST /urls`, per API key |
+| `rate_limit_redirect_ip_per_minute` | `600` | `GET /{code}`, per IP |
+| `cors_allow_origins` | `[]` | JSON list of allowed origins; empty disables CORS |
 
 ## 4. Data model
 

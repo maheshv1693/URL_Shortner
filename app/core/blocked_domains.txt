@@ -1,0 +1,4 @@
+﻿# Domains that may not be used as redirect targets.
+# One domain per line; blank lines and text after '#' are ignored.
+# An entry also blocks all of its subdomains (blocking "bad.example" blocks "a.bad.example").
+# The file is read once at startup. Override the location with URLSHORT_BLOCKED_DOMAINS_FILE.

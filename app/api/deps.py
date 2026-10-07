@@ -4,6 +4,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.rate_limit import TokenBucketLimiter
 from app.models import User
 from app.services.users import get_user_by_api_key
 
@@ -28,3 +29,42 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce(request: Request, pick_limiter, key: str) -> None:
+    limiters = request.app.state.limiters
+    if not limiters.enabled:
+        return
+    limiter: TokenBucketLimiter = pick_limiter(limiters)
+    allowed, retry_after = limiter.consume(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def limit_register_by_ip(request: Request) -> None:
+    _enforce(request, lambda limiters: limiters.register_ip, _client_ip(request))
+
+
+def limit_create_by_ip(request: Request) -> None:
+    _enforce(request, lambda limiters: limiters.create_ip, _client_ip(request))
+
+
+def limit_create_by_key(request: Request, user: CurrentUser) -> None:
+    _enforce(request, lambda limiters: limiters.create_key, f"user:{user.id}")
+
+
+def limit_redirect_by_ip(request: Request) -> None:
+    _enforce(request, lambda limiters: limiters.redirect_ip, _client_ip(request))
+
+
+def public_base_url(request: Request) -> str:
+    configured = request.app.state.settings.public_base_url
+    return (configured or str(request.base_url)).rstrip("/")

@@ -1,18 +1,29 @@
 from datetime import UTC, datetime, timedelta
-from typing import Self
+from typing import Annotated, Self
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     HttpUrl,
+    StrictBool,
     TypeAdapter,
     ValidationError,
     field_validator,
     model_validator,
 )
+from sqlalchemy import func, select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import (
+    CurrentUser,
+    DbSession,
+    limit_create_by_ip,
+    limit_create_by_key,
+    public_base_url,
+)
+from app.core import security
+from app.models import URL
 from app.models.base import utcnow
 from app.services import token_service
 
@@ -32,6 +43,8 @@ class URLCreate(BaseModel):
     @classmethod
     def _check_long_url(cls, value: str) -> str:
         value = value.strip()
+        if len(value) > security.MAX_URL_LENGTH:
+            raise ValueError(f"long_url must be at most {security.MAX_URL_LENGTH} characters")
         try:
             _http_url.validate_python(value)
         except ValidationError as exc:
@@ -67,6 +80,12 @@ class URLCreate(BaseModel):
         return self.expires_at
 
 
+class URLUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: StrictBool
+
+
 class URLOut(BaseModel):
     code: str
     short_url: str
@@ -76,10 +95,53 @@ class URLOut(BaseModel):
     is_active: bool
 
 
-@router.post("", response_model=URLOut, status_code=status.HTTP_201_CREATED)
+class URLPage(BaseModel):
+    items: list[URLOut]
+    total: int
+    limit: int
+    offset: int
+
+
+def _to_out(url: URL, base_url: str) -> URLOut:
+    return URLOut(
+        code=url.code,
+        short_url=f"{base_url}/{url.code}",
+        long_url=url.long_url,
+        created_at=url.created_at,
+        expires_at=url.expires_at,
+        is_active=url.is_active,
+    )
+
+
+def _get_owned_url(db: DbSession, code: str, user: CurrentUser) -> URL:
+    # Same 404 for "missing" and "someone else's" so codes cannot be enumerated.
+    url = db.scalar(select(URL).where(URL.code == code, URL.owner_id == user.id))
+    if url is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "short URL not found")
+    return url
+
+
+@router.post(
+    "",
+    response_model=URLOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_create_by_ip), Depends(limit_create_by_key)],
+)
 def create_short_url(
     payload: URLCreate, request: Request, db: DbSession, user: CurrentUser
 ) -> URLOut:
+    state = request.app.state
+    settings = state.settings
+    try:
+        security.check_target_url(
+            payload.long_url,
+            own_hosts=security.own_hostnames(request.url.hostname, settings.public_base_url),
+            blocked_domains=state.blocked_domains,
+            resolver=state.host_resolver,
+        )
+    except security.UnsafeURLError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
+
     try:
         url = token_service.create_url(
             db,
@@ -96,11 +158,50 @@ def create_short_url(
             "could not generate a unique short code, please retry",
         ) from None
 
-    return URLOut(
-        code=url.code,
-        short_url=f"{str(request.base_url).rstrip('/')}/{url.code}",
-        long_url=url.long_url,
-        created_at=url.created_at,
-        expires_at=url.expires_at,
-        is_active=url.is_active,
+    return _to_out(url, public_base_url(request))
+
+
+@router.get("", response_model=URLPage)
+def list_urls(
+    request: Request,
+    db: DbSession,
+    user: CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> URLPage:
+    total = db.scalar(select(func.count()).select_from(URL).where(URL.owner_id == user.id))
+    rows = db.scalars(
+        select(URL)
+        .where(URL.owner_id == user.id)
+        .order_by(URL.created_at.desc(), URL.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    base_url = public_base_url(request)
+    return URLPage(
+        items=[_to_out(row, base_url) for row in rows],
+        total=total or 0,
+        limit=limit,
+        offset=offset,
     )
+
+
+@router.patch("/{code}", response_model=URLOut)
+def update_url(
+    code: str, payload: URLUpdate, request: Request, db: DbSession, user: CurrentUser
+) -> URLOut:
+    url = _get_owned_url(db, code, user)
+    url.is_active = payload.is_active
+    db.commit()
+    # Invalidate only after the commit so a concurrent reader cannot re-cache the old state.
+    request.app.state.link_cache.invalidate(code)
+    return _to_out(url, public_base_url(request))
+
+
+@router.delete("/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_url(code: str, request: Request, db: DbSession, user: CurrentUser) -> Response:
+    url = _get_owned_url(db, code, user)
+    db.delete(url)  # clicks are removed by the database (ON DELETE CASCADE)
+    db.commit()
+    request.app.state.link_cache.invalidate(code)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
