@@ -177,6 +177,7 @@ def list_urls(
         .limit(limit)
         .offset(offset)
     ).all()
+    db.close()  # release the connection before the response hop (see get_db)
     base_url = public_base_url(request)
     return URLPage(
         items=[_to_out(row, base_url) for row in rows],
@@ -272,6 +273,7 @@ def get_analytics(
         limit=limit,
         offset=offset,
     )
+    db.close()  # release the connection before the response hop (see get_db)
     return AnalyticsOut(
         code=url.code,
         total_clicks=result.total_clicks,

@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
 from fastapi import Request
 from sqlalchemy import Engine, create_engine, event
@@ -34,7 +34,14 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
-def get_db(request: Request) -> Iterator[Session]:
+async def get_db(request: Request) -> AsyncIterator[Session]:
+    # Rule: never hold a pooled connection across a hop to another worker thread.
+    # A request hops between threads several times (dependencies, handler, response
+    # serialisation, dependency cleanup). Under a burst every worker thread can end up blocked
+    # waiting for a connection that a half-finished request holds while it waits for a thread,
+    # which deadlocks until the pool times out. So handlers that only read end their
+    # transaction (`db.close()`) before returning; commits release the connection themselves.
+    # This dependency is `async` so that creating and closing the session need no thread.
     session = request.app.state.session_factory()
     try:
         yield session

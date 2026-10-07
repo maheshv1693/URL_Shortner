@@ -53,6 +53,7 @@ def redirect_to_long_url(code: str, request: Request, db: DbSession) -> Redirect
             row = db.execute(
                 select(URL.id, URL.long_url, URL.expires_at, URL.is_active).where(URL.code == code)
             ).first()
+            db.close()  # release the connection before the response hop (see get_db)
             if row is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "short URL not found")
             if not row.is_active:

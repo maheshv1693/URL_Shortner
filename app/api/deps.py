@@ -19,6 +19,7 @@ def get_current_user(
     user = None
     if x_api_key:
         user = get_user_by_api_key(db, x_api_key, request.app.state.settings.api_key_pepper)
+    db.close()  # release the connection before the handler hop (see get_db); keeps `user` usable
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

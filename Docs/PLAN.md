@@ -6,6 +6,10 @@
 
 **Status:** Phase 3 (Tasks 7 & 9) complete and verified (246/246 tests passing, ruff clean). Phase 4 (Tasks 8 & 10) ready to start.
 
+**Status:** Phase 4 (Tasks 8 & 10) complete and verified (328/328 tests passing, ruff clean). Phase 5 (Tasks 11 & 12) in progress.
+
+**Status:** Phase 5 (Tasks 11 & 12) complete and verified (342/342 tests passing, ruff clean, live smoke test 75/75 checks). All tasks 1-12 and phases 1-5 are done.
+
 **Stack:** FastAPI, SQLite (SQLAlchemy 2 + Alembic), pytest, httpx, Docker. Redis is not used in the prototype.
 
 ## Confirmed decisions
@@ -76,11 +80,11 @@ Because `/{code}` is a catch-all, the redirect route is registered after the `/a
 | 5 | Create endpoint | Done | `POST /api/v1/urls` (long_url, optional alias, optional ttl_seconds or expires_at); alias rules: 3-32 chars, `[A-Za-z0-9_-]`, 409 if taken | FR1, 3, 4 |
 | 6 | Redirect endpoint | Done | `GET /{code}` returns 302; 404 unknown; 410 expired or disabled; `expires_at` checked at request time; indexed single lookup; small in-process LRU cache with invalidation on change | FR2, NFR1, 4 |
 | 7 | Management endpoints | Done | List my URLs; `PATCH /api/v1/urls/{code}` to enable/disable; `DELETE /api/v1/urls/{code}`; owner-only (404 for others' links); mitigate redirect cache invalidation race | FR5 |
-| 8 | Analytics | Pending | Click ingestion through a bounded in-memory queue and batch writer (retries on busy DB, drops on exhaustion); WAL and `busy_timeout=5000` config; `GET /api/v1/urls/{code}/analytics` | FR6, NFR1 |
+| 8 | Analytics | Done | Click ingestion through a bounded in-memory queue and batch writer (retries on busy DB, drops on exhaustion); WAL and `busy_timeout=5000` config; `GET /api/v1/urls/{code}/analytics` | FR6, NFR1 |
 | 9 | Security | Done | Allow only http/https; max URL length; block localhost, private and link-local IPs (SSRF) after DNS resolution; domain blocklist file; block self-referencing links; in-memory rate limit per IP and per key (token bucket) on create and redirect; security headers; CORS config | NFR6 |
-| 10 | Reliability and availability | Pending | Transactional creates, DB constraints, `/api/v1/health` and `/health` endpoints (`SELECT 1` probe), lifespan shutdown that flushes buffered clicks, structured logging | NFR3, 4 |
-| 11 | Tests | Pending | Unit tests (generator, retry, validators); API tests (create, alias conflict, expiry, disable, delete, ownership, rate limit); concurrency test for uniqueness; Locust or k6 redirect load test | All |
-| 12 | Docs | Pending | README with run instructions, OpenAPI examples, "scaling path" section | NFR2 |
+| 10 | Reliability and availability | Done | Transactional creates, DB constraints, `/api/v1/health` and `/health` endpoints (`SELECT 1` probe), lifespan shutdown that flushes buffered clicks, structured logging | NFR3, 4 |
+| 11 | Tests | Done | Unit tests (generator, retry, validators); API tests (create, alias conflict, expiry, disable, delete, ownership, rate limit); concurrency harness in `tests/test_performance.py`: 100-300 concurrent redirects (cached, uncached, constant cache misses), concurrent creates with forced token collisions, alias races, click batching and buffer overflow under burst, connection-pool exhaustion regression. An in-process ASGI harness replaces the originally planned Locust/k6 run; external tools can still target `GET /{code}` | All |
+| 12 | Docs | Done | `README.md` (requirements, setup, migrations, running, tests and ruff, configuration table, API examples, scaling path, known limits); `scripts/smoke_test.py`, a standard-library end-to-end script for a running server | NFR2 |
 
 ## Updated task sequence
 
@@ -88,11 +92,11 @@ Phased so each phase ends with something runnable:
 
 | Phase | Tasks | Status | Outcome |
 |-------|-------|--------|---------|
-| 1 | 1 -> 2 -> 3 | Completed | Foundation, data models and migrations, API key auth |
-| 2 | 4 -> 5 -> 6 | Completed | Create short URLs and redirect (working core loop) |
-| 3 | 7 -> 9 | Completedpytest | Manage URLs (disable/delete) and security hardening |
-| 4 | 8 -> 10 | Pending | Analytics and reliability |
-| 5 | 11 -> 12 | Pending | Full test suite, load test, docs |
+| 1 | 1 -> 2 -> 3 | Complete | Foundation, data models and migrations, API key auth |
+| 2 | 4 -> 5 -> 6 | Complete | Create short URLs and redirect (working core loop) |
+| 3 | 7 -> 9 | Complete | Manage URLs (disable/delete) and security hardening |
+| 4 | 8 -> 10 | Complete | Analytics and reliability |
+| 5 | 11 -> 12 | Complete | Full test suite, concurrency verification, smoke script, README \|
 
 Flat order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 9 -> 8 -> 10 -> 11 -> 12
 

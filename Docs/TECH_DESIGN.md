@@ -81,6 +81,15 @@ Applied to every new connection through a SQLAlchemy `connect` event:
 | `foreign_keys` | `ON` | Enforce FKs and cascades (off by default in SQLite) |
 | `synchronous` | `NORMAL` | Standard pairing with WAL |
 
+### Sessions and the connection pool
+
+Found by the Phase 5 concurrency tests. Sync route handlers run on AnyIO worker threads (40 by default) while the SQLAlchemy pool allows 15 connections. A request hops between threads several times (dependencies, handler, response serialisation, dependency cleanup). If a half-finished request keeps its connection while it waits for a thread, a burst can leave every thread blocked on the pool and the request stalls until the 30 s pool timeout, then fails with 500.
+
+Rule: **never hold a pooled connection across a thread hop.**
+- `get_db` is an `async` dependency, so creating and closing the session needs no worker thread.
+- Handlers that only read (auth lookup, list, analytics, redirect cache miss) call `db.close()` before returning; writes release the connection when they commit or roll back.
+- `tests/test_performance.py::test_mixed_burst_does_not_exhaust_the_connection_pool` reproduces the stall if any of this is removed.
+
 ## 6. Token generation (Task 4)
 
 - 7 characters from Base62, picked with `secrets.choice` in memory (about 3.5 trillion combinations).
@@ -143,7 +152,7 @@ JSON errors with a consistent shape. Status codes: 401, 404, 409, 410, 422, 429,
 - **DB:** pragmas applied, constraints, cascades, UTC datetime handling, migration parity.
 - **API:** create (random and alias), alias conflict, redirect states (active, expired, disabled, deleted), ownership, auth failures, `/api/v1` prefix only, rate limiting.
 - **Concurrency:** parallel creates produce unique codes; forced collisions are retried.
-- **Load:** Locust or k6 against `GET /{code}` to measure redirect latency.
+- **Load and burst:** `tests/test_performance.py` drives hundreds of concurrent requests through the ASGI app against a file-backed database: redirects (cached, uncached, constant cache misses), creates with forced token collisions, alias races, click batching, buffer overflow and pool exhaustion. `scripts/smoke_test.py` checks a live server end to end. An external load tool (Locust, k6) can be pointed at `GET /{code}` for latency figures; turn rate limiting off with `URLSHORT_RATE_LIMIT_ENABLED=false` first.
 
 Tests use a file-backed temporary SQLite database so WAL and multi-connection behaviour match production.
 
