@@ -22,7 +22,7 @@ Single stateless-looking FastAPI process with an embedded SQLite file.
 Client --> FastAPI
             |- /api/v1/*  routers --> services --> SQLAlchemy --> SQLite (WAL)
             |- GET /{code} redirect --> in-process LRU cache --> SQLite
-            |      `-- BackgroundTasks --> click insert (own DB session)
+            |      `-- click event --> in-memory buffer --> batch writer thread --> SQLite
 ```
 
 Layers:
@@ -52,6 +52,10 @@ Settings come from environment variables (prefix `URLSHORT_`), loaded through py
 | `rate_limit_create_key_per_minute` | `60` | `POST /urls`, per API key |
 | `rate_limit_redirect_ip_per_minute` | `600` | `GET /{code}`, per IP |
 | `cors_allow_origins` | `[]` | JSON list of allowed origins; empty disables CORS |
+| `analytics_batch_size` | `100` | Max clicks per database write |
+| `analytics_flush_interval_seconds` | `1.0` | Max time a click waits in memory before being written |
+| `analytics_queue_max` | `10000` | Buffer capacity; further clicks are dropped |
+| `analytics_shutdown_timeout_seconds` | `10.0` | Time allowed to flush the buffer on shutdown |
 
 ## 4. Data model
 
@@ -99,16 +103,22 @@ Applied to every new connection through a SQLAlchemy `connect` event:
 
 1. Look up `code` in a small in-process LRU cache; on a miss, query the indexed `urls.code`.
 2. Evaluate state at request time: missing -> 404; disabled or `expires_at <= now` -> 410; else 302.
-3. Schedule the click recording with `BackgroundTasks` and return immediately.
+3. Queue the click event in the in-memory buffer and return immediately.
 4. Cache entries are invalidated on disable, enable or delete in the same process.
 
 ## 9. Analytics (Task 8)
 
-- Clicks are recorded using FastAPI `BackgroundTasks`. There is no in-memory batching.
-- The background function opens its own DB session, inserts one `clicks` row and commits.
-- Failures are logged and swallowed; the redirect is never affected.
-- The IP is hashed with the pepper before storage; the raw IP is not persisted. User agent is truncated to 512 characters.
-- Stats endpoint aggregates `COUNT(*)` and returns the most recent access times for the owner's URL.
+- **Revised in Phase 4** (supersedes the earlier `BackgroundTasks` design).
+- The redirect handler builds a `ClickEvent` and appends it to a bounded in-memory buffer (`ClickRecorder.record`). It never touches the database and never blocks. If the buffer is full the event is dropped and counted.
+- One worker thread writes events in batches (up to `analytics_batch_size`, or after `analytics_flush_interval_seconds`) in a single transaction on its own session. Events for links that no longer exist are skipped.
+- `database is locked` / busy errors are retried with exponential backoff; after the last attempt the batch is dropped and logged. The worker survives any write error, and the redirect is never affected.
+- A FastAPI lifespan handler starts the worker and, on shutdown, drains the buffer (bounded by `analytics_shutdown_timeout_seconds`) before disposing the engine.
+- Event fields: `url_id`, `clicked_at` (UTC, stored as `accessed_at`), `ip_hash`, `user_agent`, `referrer`.
+  - The IP is hashed (HMAC-SHA256 with the pepper, domain-separated, IPv4-mapped IPv6 normalised) before the event is queued; raw IPs are never stored.
+  - The user agent has control characters removed and is truncated to 512 characters.
+  - The referrer is reduced to `scheme://host[:port]` of an http(s) URL; paths, queries and credentials are discarded.
+- `GET /api/v1/urls/{code}/analytics` (owner only, 404 otherwise) returns: `total_clicks` (all time), a zero-filled `time_series` (`granularity` `hour` or `day`, last `days` days in UTC; hourly is limited to 14 days), `top_referrers` (all time, `top_referrers` param) and paginated `recent_clicks` (`limit`, `offset`, newest first). Clicks show up after the batch delay.
+- Health: `GET /health` and `GET /api/v1/health` run `SELECT 1`; they return 200 `{"status":"ok","database":"ok"}` or 503 `{"status":"degraded","database":"unavailable"}`.
 
 ## 10. Security design (Task 9)
 
@@ -149,7 +159,7 @@ Tests use a file-backed temporary SQLite database so WAL and multi-connection be
 |-------|-------------|--------------|
 | SQLite single-node writes | Write throughput capped to one node | Move to Postgres with read replicas |
 | In-process cache and rate limiter | Per instance, not shared | Redis for cache and rate limiting |
-| `BackgroundTasks` are in-process | A crash can lose unwritten clicks | Queue (Redis Streams, Kafka) with a consumer |
+| Click buffer is in-process memory | A crash or hard kill can lose buffered clicks; clicks are dropped when the buffer is full or the DB stays locked | Queue (Redis Streams, Kafka) with a consumer |
 | Single instance | No real high availability | Multiple instances behind a load balancer, once the DB is external |
 
 Storage and cache access sit behind small interfaces so these swaps do not change the API.

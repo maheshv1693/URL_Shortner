@@ -4,6 +4,8 @@
 
 **Status:** Phase 2 (Tasks 4–6) complete and verified (98/98 tests passing, ruff clean). Phase 3 (Tasks 7 & 9) in progress.
 
+**Status:** Phase 3 (Tasks 7 & 9) complete and verified (246/246 tests passing, ruff clean). Phase 4 (Tasks 8 & 10) ready to start.
+
 **Stack:** FastAPI, SQLite (SQLAlchemy 2 + Alembic), pytest, httpx, Docker. Redis is not used in the prototype.
 
 ## Confirmed decisions
@@ -34,14 +36,15 @@
 
 ### 2. Task 8 - Analytics
 
-- Replaces the earlier "in-memory batching" design. Nothing is buffered in memory.
-- The redirect handler returns the 302 immediately and schedules the click insert with FastAPI `BackgroundTasks`. The task opens its own DB session.
-- A failing click insert is logged and never affects the redirect.
+- **Revised in Phase 4:** this supersedes the earlier "`BackgroundTasks`, no in-memory buffering" decision. Clicks are now queued in a bounded in-memory buffer and written to SQLite in batches by one worker thread. Batching keeps write-lock churn low during click spikes, and the buffer is flushed on graceful shutdown.
+- The redirect handler returns the 302 immediately; it only appends a click event to the buffer (no database access, no blocking). The raw visitor IP is hashed before the event is queued.
+- Batches are written in one transaction on the worker's own DB session. Busy or locked errors are retried with backoff; after the last attempt the batch is dropped and logged. A failing write never affects the redirect.
+- A FastAPI lifespan handler starts the worker on startup and, on shutdown, writes everything still buffered before the process exits.
 - SQLite engine configuration (applied on every new connection through a SQLAlchemy `connect` event):
   - `PRAGMA journal_mode=WAL` so readers (redirects) are not blocked by writers (click inserts).
   - `PRAGMA busy_timeout=5000` (5000 ms) so writers wait for the lock instead of failing immediately. Configurable through settings, default 5000.
   - Also `PRAGMA foreign_keys=ON` and `PRAGMA synchronous=NORMAL` (the usual pairing with WAL).
-- Stats are read with `GET /api/v1/urls/{code}/stats`.
+- Owners read analytics with `GET /api/v1/urls/{code}/analytics` (total clicks, zero-filled hourly or daily time series, top referrers, paginated recent clicks).
 
 ### 3. API contracts
 
@@ -56,8 +59,8 @@
 | GET | `/api/v1/urls` | List my URLs | API key |
 | PATCH | `/api/v1/urls/{code}` | Enable or disable | API key |
 | DELETE | `/api/v1/urls/{code}` | Delete | API key |
-| GET | `/api/v1/urls/{code}/stats` | Click count and access times | API key |
-| GET | `/api/v1/health` | Health check | None |
+| GET | `/api/v1/urls/{code}/analytics` | Click analytics (totals, time series, referrers, recent clicks) | API key |
+| GET | `/api/v1/health` and `/health` | Health check with database probe (503 if the database is unreachable) | None |
 | GET | `/{code}` | Redirect (302, 404 unknown, 410 expired or disabled) | None |
 
 Because `/{code}` is a catch-all, the redirect route is registered after the `/api/v1` routers.
@@ -72,10 +75,10 @@ Because `/{code}` is a catch-all, the redirect route is registered after the `/a
 | 4 | Token generator | Done | 7-char Base62 via `secrets.choice`; insert with 3-attempt retry on unique collision; 503 after exhaustion; reserved words rejected for aliases | FR1, NFR5 |
 | 5 | Create endpoint | Done | `POST /api/v1/urls` (long_url, optional alias, optional ttl_seconds or expires_at); alias rules: 3-32 chars, `[A-Za-z0-9_-]`, 409 if taken | FR1, 3, 4 |
 | 6 | Redirect endpoint | Done | `GET /{code}` returns 302; 404 unknown; 410 expired or disabled; `expires_at` checked at request time; indexed single lookup; small in-process LRU cache with invalidation on change | FR2, NFR1, 4 |
-| 7 | Management endpoints | Pending | List my URLs; `PATCH /api/v1/urls/{code}` to enable/disable; `DELETE /api/v1/urls/{code}`; owner-only (404 for others' links); mitigate redirect cache invalidation race | FR5 |
-| 8 | Analytics | Pending | Click ingestion via FastAPI `BackgroundTasks` (no in-memory batching); WAL and `busy_timeout=5000` config; `GET /api/v1/urls/{code}/stats` | FR6, NFR1 |
-| 9 | Security | Pending | Allow only http/https; max URL length; block localhost, private and link-local IPs (SSRF) after DNS resolution; domain blocklist file; block self-referencing links; in-memory rate limit per IP and per key (token bucket) on create and redirect; security headers; CORS config | NFR6 |
-| 10 | Reliability and availability | Pending | Transactional creates, DB constraints, `/api/v1/health` endpoint, graceful shutdown, structured logging | NFR3, 4 |
+| 7 | Management endpoints | Done | List my URLs; `PATCH /api/v1/urls/{code}` to enable/disable; `DELETE /api/v1/urls/{code}`; owner-only (404 for others' links); mitigate redirect cache invalidation race | FR5 |
+| 8 | Analytics | Pending | Click ingestion through a bounded in-memory queue and batch writer (retries on busy DB, drops on exhaustion); WAL and `busy_timeout=5000` config; `GET /api/v1/urls/{code}/analytics` | FR6, NFR1 |
+| 9 | Security | Done | Allow only http/https; max URL length; block localhost, private and link-local IPs (SSRF) after DNS resolution; domain blocklist file; block self-referencing links; in-memory rate limit per IP and per key (token bucket) on create and redirect; security headers; CORS config | NFR6 |
+| 10 | Reliability and availability | Pending | Transactional creates, DB constraints, `/api/v1/health` and `/health` endpoints (`SELECT 1` probe), lifespan shutdown that flushes buffered clicks, structured logging | NFR3, 4 |
 | 11 | Tests | Pending | Unit tests (generator, retry, validators); API tests (create, alias conflict, expiry, disable, delete, ownership, rate limit); concurrency test for uniqueness; Locust or k6 redirect load test | All |
 | 12 | Docs | Pending | README with run instructions, OpenAPI examples, "scaling path" section | NFR2 |
 
@@ -87,7 +90,7 @@ Phased so each phase ends with something runnable:
 |-------|-------|--------|---------|
 | 1 | 1 -> 2 -> 3 | Completed | Foundation, data models and migrations, API key auth |
 | 2 | 4 -> 5 -> 6 | Completed | Create short URLs and redirect (working core loop) |
-| 3 | 7 -> 9 | Pending | Manage URLs (disable/delete) and security hardening |
+| 3 | 7 -> 9 | Completedpytest | Manage URLs (disable/delete) and security hardening |
 | 4 | 8 -> 10 | Pending | Analytics and reliability |
 | 5 | 11 -> 12 | Pending | Full test suite, load test, docs |
 
@@ -105,7 +108,7 @@ Flat order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 9 -> 8 -> 10 -> 11 -> 12
   - *Rationale:* Builds lifecycle ownership (disable/delete) and locks down the application before telemetry. Adding SSRF defenses, URL sanitization, and token-bucket rate limiting here ensures edge attacks are neutralized before asynchronous background tasks are introduced.
 
 - **Phase 4 (Tasks 8 -> 10): Telemetry & Operational Reliability**
-  - *Rationale:* Decouples non-critical background click ingestion (`BackgroundTasks`) and health monitoring from the critical path, testing SQLite concurrency without risking the core redirect engine.
+  - *Rationale:* Decouples non-critical background click ingestion (in-memory queue with a batch writer, flushed on shutdown) and health monitoring from the critical path, testing SQLite concurrency without risking the core redirect engine.
 
 - **Phase 5 (Tasks 11 -> 12): Verification & Production Documentation**
   - *Rationale:* End-to-end integration, concurrency collision stress tests, and deployment packaging.
@@ -113,6 +116,6 @@ Flat order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 9 -> 8 -> 10 -> 11 -> 12
 ## Known prototype limits (consequences of SQLite only)
 
 - **Scale:** SQLite handles reads well, but writes are limited to a single node. Millions of URLs are fine. Very high read traffic needs Postgres, Redis and read replicas. Storage and cache will sit behind interfaces so the swap is easy.
-- **Analytics durability:** `BackgroundTasks` run in the same process after the response. A crash can drop clicks that were not yet written. This is accepted for the prototype.
+- **Analytics durability:** clicks wait in an in-memory buffer (about one second by default) before being written. A crash or kill signal that skips graceful shutdown loses the buffered clicks, and clicks are dropped if the buffer is full or the database stays locked. This is accepted for the prototype.
 - **Rate limiting and cache:** in-process, so per instance and not shared across replicas.
 - **Availability:** a single instance means no real high availability yet.

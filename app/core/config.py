@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     public_base_url: str | None = None
     blocked_domains_file: str = str(DEFAULT_BLOCKED_DOMAINS_FILE)
 
+    # Click analytics: clicks are queued in memory and written to SQLite in batches.
+    analytics_batch_size: int = Field(default=100, ge=1)
+    analytics_flush_interval_seconds: float = Field(default=1.0, gt=0)
+    analytics_queue_max: int = Field(default=10_000, ge=1)
+    analytics_shutdown_timeout_seconds: float = Field(default=10.0, gt=0)
+
     # Token buckets: the limit is both the burst size and the per-minute refill rate.
     rate_limit_enabled: bool = True
     rate_limit_register_ip_per_minute: int = Field(default=10, ge=1)

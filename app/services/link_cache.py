@@ -8,6 +8,7 @@ from datetime import datetime
 
 @dataclass(frozen=True, slots=True)
 class CachedLink:
+    url_id: int
     long_url: str
     expires_at: datetime | None
 

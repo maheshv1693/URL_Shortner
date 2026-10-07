@@ -31,7 +31,7 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def _client_ip(request: Request) -> str:
+def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
@@ -50,11 +50,11 @@ def _enforce(request: Request, pick_limiter, key: str) -> None:
 
 
 def limit_register_by_ip(request: Request) -> None:
-    _enforce(request, lambda limiters: limiters.register_ip, _client_ip(request))
+    _enforce(request, lambda limiters: limiters.register_ip, client_ip(request))
 
 
 def limit_create_by_ip(request: Request) -> None:
-    _enforce(request, lambda limiters: limiters.create_ip, _client_ip(request))
+    _enforce(request, lambda limiters: limiters.create_ip, client_ip(request))
 
 
 def limit_create_by_key(request: Request, user: CurrentUser) -> None:
@@ -62,7 +62,7 @@ def limit_create_by_key(request: Request, user: CurrentUser) -> None:
 
 
 def limit_redirect_by_ip(request: Request) -> None:
-    _enforce(request, lambda limiters: limiters.redirect_ip, _client_ip(request))
+    _enforce(request, lambda limiters: limiters.redirect_ip, client_ip(request))
 
 
 def public_base_url(request: Request) -> str:

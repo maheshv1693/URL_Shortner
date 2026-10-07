@@ -25,6 +25,18 @@ def hash_api_key(api_key: str, pepper: str) -> str:
     return hmac.new(pepper.encode(), api_key.encode(), hashlib.sha256).hexdigest()
 
 
+def hash_ip(ip: str, pepper: str) -> str:
+    """Keyed, irreversible-without-the-pepper digest of a visitor IP (raw IPs are never stored)."""
+    try:
+        address = ipaddress.ip_address(ip.split("%", 1)[0])
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+        canonical = str(address)
+    except ValueError:
+        canonical = ip
+    return hmac.new(pepper.encode(), b"click-ip:" + canonical.encode(), hashlib.sha256).hexdigest()
+
+
 class UnsafeURLError(ValueError):
     """The target URL is rejected by link-safety policy (maps to 422)."""
 

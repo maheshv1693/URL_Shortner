@@ -21,7 +21,7 @@ def follow(client, code):
 
 
 def link(n=1) -> CachedLink:
-    return CachedLink(long_url=f"https://example.com/{n}", expires_at=None)
+    return CachedLink(url_id=n, long_url=f"https://example.com/{n}", expires_at=None)
 
 
 # --- authentication ---------------------------------------------------------

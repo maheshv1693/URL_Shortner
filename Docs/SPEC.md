@@ -59,7 +59,7 @@ A URL shortener prototype: users submit a long URL and receive a short URL that 
 
 ### 4.5 Analytics
 - Recorded per redirect: access time, hashed client IP, user agent, referrer.
-- Owner stats: total click count and recent access times (`GET /api/v1/urls/{code}/stats`).
+- Owner analytics (`GET /api/v1/urls/{code}/analytics`): total click count, a click time series (hourly or daily), top referrers and recent clicks. Referrers are stored as origin only; the raw IP is never stored.
 - Recording is best effort. A failed write does not affect the redirect, so a click may rarely be lost.
 
 ### 4.6 Link safety and abuse protection
@@ -81,8 +81,8 @@ All endpoints are under `/api/v1/`. The public redirect is `GET /{code}`.
 | GET | `/api/v1/urls` | List my URLs | API key | 200 | 401 |
 | PATCH | `/api/v1/urls/{code}` | Enable or disable | API key | 200 | 401, 404, 422 |
 | DELETE | `/api/v1/urls/{code}` | Delete | API key | 204 | 401, 404 |
-| GET | `/api/v1/urls/{code}/stats` | Click stats | API key | 200 | 401, 404 |
-| GET | `/api/v1/health` | Health check | None | 200 | - |
+| GET | `/api/v1/urls/{code}/analytics` | Click analytics | API key | 200 | 401, 404, 422 |
+| GET | `/api/v1/health` (also `/health`) | Health check | None | 200 | 503 (database unreachable) |
 | GET | `/{code}` | Redirect | None | 302 | 404, 410, 429 |
 
 ## 6. Confirmed product decisions

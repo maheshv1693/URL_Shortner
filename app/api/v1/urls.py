@@ -25,7 +25,7 @@ from app.api.deps import (
 from app.core import security
 from app.models import URL
 from app.models.base import utcnow
-from app.services import token_service
+from app.services import analytics_service, token_service
 
 router = APIRouter(prefix="/urls", tags=["urls"])
 
@@ -205,3 +205,90 @@ def delete_url(code: str, request: Request, db: DbSession, user: CurrentUser) ->
     db.commit()
     request.app.state.link_cache.invalidate(code)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class TimeBucket(BaseModel):
+    bucket: datetime
+    clicks: int
+
+
+class ReferrerCount(BaseModel):
+    referrer: str
+    clicks: int
+
+
+class ClickOut(BaseModel):
+    clicked_at: datetime
+    referrer: str | None
+    user_agent: str | None
+
+
+class RecentClicks(BaseModel):
+    items: list[ClickOut]
+    limit: int
+    offset: int
+
+
+class AnalyticsOut(BaseModel):
+    code: str
+    total_clicks: int
+    granularity: analytics_service.Granularity
+    window_start: datetime
+    time_series: list[TimeBucket]
+    top_referrers: list[ReferrerCount]
+    recent_clicks: RecentClicks
+
+
+@router.get("/{code}/analytics", response_model=AnalyticsOut)
+def get_analytics(
+    code: str,
+    db: DbSession,
+    user: CurrentUser,
+    granularity: analytics_service.Granularity = "day",
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
+    top_referrers: Annotated[int, Query(ge=1, le=50)] = 10,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AnalyticsOut:
+    """Click statistics for one of the caller's links.
+
+    `total_clicks`, `top_referrers` and `recent_clicks` cover all time; `time_series` covers
+    the last `days` days in UTC buckets (zero-filled). Clicks appear after a short delay
+    because they are written in batches.
+    """
+    if granularity == "hour" and days > analytics_service.MAX_HOURLY_DAYS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"hourly granularity supports at most {analytics_service.MAX_HOURLY_DAYS} days",
+        )
+    url = _get_owned_url(db, code, user)
+    result = analytics_service.get_click_analytics(
+        db,
+        url.id,
+        now=utcnow(),
+        granularity=granularity,
+        days=days,
+        top_referrers=top_referrers,
+        limit=limit,
+        offset=offset,
+    )
+    return AnalyticsOut(
+        code=url.code,
+        total_clicks=result.total_clicks,
+        granularity=granularity,
+        window_start=result.window_start,
+        time_series=[TimeBucket(bucket=b, clicks=n) for b, n in result.time_series],
+        top_referrers=[ReferrerCount(referrer=r, clicks=n) for r, n in result.top_referrers],
+        recent_clicks=RecentClicks(
+            items=[
+                ClickOut(
+                    clicked_at=click.accessed_at,
+                    referrer=click.referrer,
+                    user_agent=click.user_agent,
+                )
+                for click in result.recent
+            ],
+            limit=limit,
+            offset=offset,
+        ),
+    )

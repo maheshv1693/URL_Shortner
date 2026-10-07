@@ -108,16 +108,6 @@ def test_redirect_does_not_shadow_api_or_docs(client):
     assert client.get("/api/v1/users/me").status_code == 401
 
 
-def test_redirect_does_not_record_clicks(client, auth_headers, db):
-    from sqlalchemy import func, select
-
-    from app.models import Click
-
-    code = make(client, auth_headers)
-    follow(client, code)
-    assert db.scalar(select(func.count()).select_from(Click)) == 0
-
-
 # --- LRU cache --------------------------------------------------------------
 
 
@@ -172,7 +162,7 @@ def test_cache_size_comes_from_settings(settings):
 
 
 def link(n: int) -> CachedLink:
-    return CachedLink(long_url=f"https://example.com/{n}", expires_at=None)
+    return CachedLink(url_id=n, long_url=f"https://example.com/{n}", expires_at=None)
 
 
 def test_lru_evicts_least_recently_used():
