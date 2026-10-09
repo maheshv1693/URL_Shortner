@@ -107,6 +107,7 @@ docker run -p 8000:8000 -v url-data:/data \
 The image runs as a non-root user, applies the migrations on start and keeps the SQLite file on the `/data`
 volume.
 
+
 ## Using the API
 
 ### Windows (PowerShell) Quickstart Walkthrough
@@ -130,57 +131,58 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 #### Terminal 2: Test the API Lifecycle
 ```powershell
 # 1. Register user and capture the generated API key into a variable
-$response = curl.exe -s -X POST [http://127.0.0.1:8000/api/v1/users](http://127.0.0.1:8000/api/v1/users)
+$response = curl.exe -s -X POST http://127.0.0.1:8000/api/v1/users
 $KEY = ($response | ConvertFrom-Json).api_key
 Write-Host "Active API Key: $KEY"
 
 # 2. Create a short link with custom alias and TTL
-curl.exe -s -X POST [http://127.0.0.1:8000/api/v1/urls](http://127.0.0.1:8000/api/v1/urls) `
+curl.exe -s -X POST http://127.0.0.1:8000/api/v1/urls `
   -H "X-API-Key: $KEY" `
   -H "Content-Type: application/json" `
-  -d '{\"long_url\": \"[https://example.com/some/long/path](https://example.com/some/long/path)\", \"custom_alias\": \"my-link\", \"ttl_seconds\": 86400}'
+  -d '{\"long_url\": \"https://example.com/some/long/path\", \"custom_alias\": \"my-link\", \"ttl_seconds\": 86400}'
 
 # 3. Follow redirect and inspect 302 response headers
-curl.exe -i [http://127.0.0.1:8000/my-link](http://127.0.0.1:8000/my-link)
+curl.exe -i http://127.0.0.1:8000/my-link
 
 # 4. Inspect click analytics telemetry
-curl.exe -s "[http://127.0.0.1:8000/api/v1/urls/my-link/analytics?granularity=day&days=7](http://127.0.0.1:8000/api/v1/urls/my-link/analytics?granularity=day&days=7)" `
+curl.exe -s "http://127.0.0.1:8000/api/v1/urls/my-link/analytics?granularity=day&days=7" `
   -H "X-API-Key: $KEY"
 
 # 5. Disable the short link
-curl.exe -s -X PATCH [http://127.0.0.1:8000/api/v1/urls/my-link](http://127.0.0.1:8000/api/v1/urls/my-link) `
+curl.exe -s -X PATCH http://127.0.0.1:8000/api/v1/urls/my-link `
   -H "X-API-Key: $KEY" `
   -H "Content-Type: application/json" `
   -d '{\"is_active\": false}'
 
 # 6. Delete the short link permanently
-curl.exe -s -X DELETE [http://127.0.0.1:8000/api/v1/urls/my-link](http://127.0.0.1:8000/api/v1/urls/my-link) `
+curl.exe -s -X DELETE http://127.0.0.1:8000/api/v1/urls/my-link `
   -H "X-API-Key: $KEY"
 ```
 
 ### Linux / macOS (Bash)
 ```bash
 # 1. Register. The API key is shown only once.
-curl -s -X POST [http://127.0.0.1:8000/api/v1/users](http://127.0.0.1:8000/api/v1/users)
+curl -s -X POST http://127.0.0.1:8000/api/v1/users
 # {"id":1,"created_at":"...","api_key":"<KEY>"}
 
 # 2. Create a short link (random code, or add "custom_alias", "ttl_seconds" / "expires_at")
-curl -s -X POST [http://127.0.0.1:8000/api/v1/urls](http://127.0.0.1:8000/api/v1/urls) \
+curl -s -X POST http://127.0.0.1:8000/api/v1/urls \
   -H "X-API-Key: <KEY>" -H "Content-Type: application/json" \
-  -d '{"long_url": "[https://example.com/some/long/path](https://example.com/some/long/path)", "custom_alias": "my-link", "ttl_seconds": 86400}'
+  -d '{"long_url": "https://example.com/some/long/path", "custom_alias": "my-link", "ttl_seconds": 86400}'
 
 # 3. Follow it
-curl -i [http://127.0.0.1:8000/my-link](http://127.0.0.1:8000/my-link)
+curl -i http://127.0.0.1:8000/my-link
 
 # 4. Analytics: total clicks, time series, top referrers, recent clicks
-curl -s "[http://127.0.0.1:8000/api/v1/urls/my-link/analytics?granularity=day&days=7](http://127.0.0.1:8000/api/v1/urls/my-link/analytics?granularity=day&days=7)" -H "X-API-Key: <KEY>"
+curl -s "http://127.0.0.1:8000/api/v1/urls/my-link/analytics?granularity=day&days=7" -H "X-API-Key: <KEY>"
 
 # 5. Disable, re-enable or delete
-curl -s -X PATCH [http://127.0.0.1:8000/api/v1/urls/my-link](http://127.0.0.1:8000/api/v1/urls/my-link) \
+curl -s -X PATCH http://127.0.0.1:8000/api/v1/urls/my-link \
   -H "X-API-Key: <KEY>" -H "Content-Type: application/json" -d '{"is_active": false}'
-curl -s -X DELETE [http://127.0.0.1:8000/api/v1/urls/my-link](http://127.0.0.1:8000/api/v1/urls/my-link) -H "X-API-Key: <KEY>"
+curl -s -X DELETE http://127.0.0.1:8000/api/v1/urls/my-link -H "X-API-Key: <KEY>"
 ```
-docs at `/docs`.
+
+On Windows PowerShell use `curl.exe` instead of `curl` (and escape the JSON quotes), or use the interactive docs at `/docs`.
 
 | Method | Path | Auth | Result |
 |--------|------|------|--------|

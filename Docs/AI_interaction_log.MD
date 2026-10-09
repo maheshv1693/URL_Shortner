@@ -53,7 +53,7 @@ please create a document with this tasks.
 ```
 
 ![Copilot Plan Confirmation](screenshots/09_plan_tasks_initial.png)
-![Initial Tasks Proposed by Copilot](screenshots/09b_initial_tasks_flaw..png)
+![Initial Tasks Proposed by Copilot](screenshots/09b_initial_tasks_flaw.png)
 
 ### Flaws Identified in AI Proposal & Remediation
 1. **Rejection of Task 4 Auto-Increment ID Base62 in Favor of CSPRNG Random Strings:**
@@ -78,7 +78,7 @@ API Contracts: Standardize all endpoints under /api/v1/ (keeping public redirect
 Update PLAN.md with these changes, list the updated task sequence, and stop. Wait for my manual review and approval before creating any files or writing implementation code.
 ```
 
-![Intervention Prompt Evidence](screenshots/10_architectural_interventions_prom..png)
+![Intervention Prompt Evidence](screenshots/10_architectural_interventions_prompt.png)
 ![Phase Table Breakdown](screenshots/11_phase_breakdown.png)
 
 ---
@@ -152,7 +152,7 @@ Execution Constraint: Implement Phase 1 only. Run the tests, report the status, 
 ![Terminal Inspection Permission](screenshots/13b_phase1_terminal_permission.png)
 ![Phase 1 Tests Passing](screenshots/14_phase1_test_pass.png)
 ![Uvicorn Startup](screenshots/14b_phase1_server_startup.png)
-![Swagger UI Audit](screenshots/15_phase1_swagger..png)
+![Swagger UI Audit](screenshots/15_phase1_swagger.png)
 
 ---
 
