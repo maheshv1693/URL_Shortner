@@ -1,14 +1,6 @@
 # URL Shortener Prototype - Plan
 
-**Status:** Phase 1 (Tasks 1–3) implemented, verified (14/14 tests passing, ruff clean), and committed. Phase 2 (Tasks 4–6) in progress.
-
-**Status:** Phase 2 (Tasks 4–6) complete and verified (98/98 tests passing, ruff clean). Phase 3 (Tasks 7 & 9) in progress.
-
-**Status:** Phase 3 (Tasks 7 & 9) complete and verified (246/246 tests passing, ruff clean). Phase 4 (Tasks 8 & 10) ready to start.
-
-**Status:** Phase 4 (Tasks 8 & 10) complete and verified (328/328 tests passing, ruff clean). Phase 5 (Tasks 11 & 12) in progress.
-
-**Status:** Phase 5 (Tasks 11 & 12) complete and verified (342/342 tests passing, ruff clean, live smoke test 75/75 checks). All tasks 1-12 and phases 1-5 are done.
+**Status:** URL-shortener Tasks 1–12 and Phases 1–5 are complete. The separate requirement-to-engineering proposal CLI is documented in [REQUIREMENT_WORKFLOW.md](./REQUIREMENT_WORKFLOW.md).
 
 **Stack:** FastAPI, SQLite (SQLAlchemy 2 + Alembic), pytest, httpx, Docker. Redis is not used in the prototype.
 

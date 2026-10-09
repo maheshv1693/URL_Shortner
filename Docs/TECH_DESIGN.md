@@ -1,6 +1,8 @@
 # URL Shortener - Technical Architecture & Engineering Spec
 
-**Status:** Draft for review. Describes *how* the system is built. For product behaviour and requirements, see [SPEC.md](./SPEC.md). For tasks and sequencing, see [PLAN.md](./PLAN.md). No code exists yet.
+**Status:** Implemented prototype. Describes *how* the system is built. For product behaviour and
+requirements, see [SPEC.md](./SPEC.md). For tasks and sequencing, see [PLAN.md](./PLAN.md). The URL
+shortener and local requirement proposal CLI are implemented.
 
 ## 1. Stack
 
@@ -13,6 +15,10 @@
 | Lint and format | ruff |
 | Packaging | `pyproject.toml`, Docker |
 | Not used in the prototype | Redis, Postgres, message queues |
+
+The separate [requirement_to_output.py](../scripts/requirement_to_output.py) CLI reads text or a file
+and emits a JSON engineering proposal. It uses deterministic local rules, does not call a model, and
+does not write implementation changes.
 
 ## 2. Architecture overview
 

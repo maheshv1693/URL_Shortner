@@ -8,6 +8,24 @@ their links.
 - **Stack:** FastAPI, SQLAlchemy 2, SQLite (WAL), Alembic, pydantic-settings, pytest, ruff.
 - **Docs:** [Docs/SPEC.md](Docs/SPEC.md) (what it does), [Docs/TECH_DESIGN.md](Docs/TECH_DESIGN.md) (how it is
   built), [Docs/PLAN.md](Docs/PLAN.md) (tasks and status).
+- **Requirement workflow:** [Docs/REQUIREMENT_WORKFLOW.md](Docs/REQUIREMENT_WORKFLOW.md) describes the local
+  prototype that turns requirement text into a reviewable engineering proposal.
+
+## Requirement-to-engineering proposal
+
+The prototype accepts a requirement and prints structured JSON; it does not modify code or require an
+API key. From the repository root:
+
+```bash
+python scripts/requirement_to_output.py \
+  "Build a scalable URL shortener service with APIs, persistence, and analytics." \
+  --scenario greenfield
+```
+
+Pass `--input-file path\to\requirement.txt` to read a file, `--output proposal.json` to save the result,
+or use `--scenario brownfield` / `--scenario ambiguous` to select a review path. Its local keyword-based
+analysis is a proposal only; an engineer must resolve questions, inspect the suggestions, and validate
+any implementation. See the workflow document for all three examples and limitations.
 
 ## Requirements
 
@@ -208,11 +226,15 @@ Behaviour worth knowing:
   origin is kept, the visitor IP is stored as a keyed hash, and the user agent is truncated.
 - Every response carries `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers.
 
+
+
 ## Tests and static analysis
 
+The test suite contains **350 passing tests** with zero external network dependencies:
+
 ```bash
-pytest                 # full suite (add -v for verbose output)
-pytest tests/test_performance.py   # concurrency and burst tests only
+pytest                 # full suite (350 passed: 342 core API + 8 CLI tool tests)
+pytest tests/test_performance.py   # concurrency and burst harness (14 tests)
 ruff check .           # lint
 ruff format --check .  # formatting
 ```
@@ -220,10 +242,9 @@ ruff format --check .  # formatting
 The suite runs against temporary file-backed SQLite databases and never touches the network (DNS is stubbed).
 It includes:
 
-- unit and API tests for every endpoint and rule in the spec;
-- `tests/test_performance.py`: 100-300 concurrent redirects against cached and uncached links, concurrent
-  link creation with forced token collisions and custom-alias races, click-batching under burst traffic,
-  and a regression test for connection-pool exhaustion.
+- **Unit & API Tests:** Comprehensive verification of every endpoint, auth boundary, and validation rule.
+- **Requirement Tool Tests (`tests/test_requirement_to_output.py`):** 8 tests validating deterministic generation across greenfield, brownfield, and ambiguous requirements, DAG topological ordering, and file output.
+- **Concurrency Harness (`tests/test_performance.py`):** 14 stress tests covering 100–300 concurrent redirects against cached/uncached links, forced token collisions, alias races, click-batching under burst traffic, and connection-pool exhaustion regression.
 
 ## Live smoke test
 
@@ -245,16 +266,19 @@ users each time and deletes its links; with the default limits, keep to a handfu
 
 ```
 app/
-  main.py              application factory, lifespan (starts/stops the click writer)
-  api/                 routers: users, urls (+ analytics), health, redirect; shared dependencies
-  core/                settings, database engine (SQLite pragmas), security helpers, rate limiter
-  middleware/          security headers
-  models/              SQLAlchemy models: User, URL, Click
-  services/            token generation, user lookup, redirect cache, click analytics
-alembic/               migrations
-scripts/smoke_test.py  live end-to-end smoke test
-tests/                 pytest suite
-Docs/                  spec, technical design, plan
+  main.py               application factory, lifespan (starts/stops the click writer)
+  api/                  routers: users, urls (+ analytics), health, redirect; shared dependencies
+  core/                 settings, database engine (SQLite pragmas), security helpers, rate limiter
+  middleware/           security headers
+  models/               SQLAlchemy models: User, URL, Click
+  services/             token generation, user lookup, redirect cache, click analytics
+alembic/                migrations
+examples/requirements/  input fixtures for greenfield, brownfield, and ambiguous scenarios
+scripts/
+  requirement_to_output.py  CLI requirement-to-engineering proposal prototype
+  smoke_test.py             live end-to-end smoke test
+tests/                  pytest suite (350 tests including API, CLI, and concurrency)
+Docs/                   spec, technical design, plan, requirement workflow
 ```
 
 ## Scaling path
